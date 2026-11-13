@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Egg Incubator Digital Twin</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;600;700&display=swap">
+<style>
+/* Layout: instrument-console — 3D stage left, readout rack right, timeline strip below, results table last. */
+:root {
+  --bg: #e9eeec;
+  --panel: #f8faf9;
+  --stage: #dfe6e3;
+  --fg: #1b2422;
+  --muted: #5a6a66;
+  --line: #c9d3cf;
+  --warm: #c8641e;
+  --cool: #2b7a8a;
+  --ok: #3f8a4f;
+  --alert: #b8352a;
+  --display: "Barlow Semi Condensed", "IBM Plex Sans Thai", "Arial Narrow", system-ui, sans-serif;
+  --body: "Source Sans 3", "IBM Plex Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "IBM Plex Sans Thai", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --panel: #18201e; --stage: #0d1312; --fg: #e3eae7; --muted: #8fa29d;
+    --line: #2b3633; --warm: #e8873f; --cool: #4fb0c1; --ok: #6cbf7c; --alert: #ef6a5b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --panel: #18201e; --stage: #0d1312; --fg: #e3eae7; --muted: #8fa29d;
+  --line: #2b3633; --warm: #e8873f; --cool: #4fb0c1; --ok: #6cbf7c; --alert: #ef6a5b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1360px; margin: 0 auto; display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 8px 24px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3.2vw, 36px); line-height: 1.05; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 68ch; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+label.f { display: grid; gap: 2px; font-family: var(--display); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+select, button {
+  font: 500 14px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 10px; min-height: 36px;
+}
+button { cursor: pointer; font-family: var(--display); font-weight: 600; letter-spacing: 0.04em; }
+button:hover, select:hover { border-color: var(--muted); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--cool); outline-offset: 2px; }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); min-width: 84px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+@media (max-width: 920px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.stage { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 10; max-width: 100%; min-height: 300px; }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+.clock { position: absolute; left: 14px; top: 12px; font-family: var(--display); pointer-events: none; }
+.clock .d { font-size: 34px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.clock .h { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.phase { font-family: var(--display); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.legend { position: absolute; right: 12px; bottom: 12px; background: color-mix(in srgb, var(--panel) 88%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; display: grid; gap: 4px; }
+.legend .bar { width: 170px; max-width: 40vw; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #3b70b5 0%, #9ec7db 34%, #f2e8d5 52%, #f5a352 76%, #c7362b 100%); }
+.legend .fbar { width: 170px; max-width: 40vw; height: 10px; border-radius: 3px; background: linear-gradient(90deg, #3b70b5 0%, #9ea19e 50%, #c7362b 100%); }
+.legend .fnote { color: var(--muted); font-size: 11px; max-width: 200px; }
+.legend .flowleg { display: grid; gap: 4px; margin-top: 6px; }
+.legend .flowleg[hidden] { display: none; }
+.legend .ticks { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.banner { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); font-family: var(--display); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-size: 14px; padding: 4px 12px; border-radius: 4px; background: var(--alert); color: #fff; }
+.tip { position: absolute; pointer-events: none; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.4; box-shadow: 0 6px 18px rgb(0 0 0 / 0.18); min-width: 200px; max-width: 260px; }
+.tip b { font-family: var(--display); font-size: 15px; }
+.tip .r { display: flex; justify-content: space-between; gap: 12px; }
+.tip .r span:last-child { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.hint { position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--muted); pointer-events: none; }
+@media (max-width: 560px) { .hint { display: none; } .legend .bar, .legend .fbar { width: 120px; } }
+
+.rack { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 14px; align-content: start; }
+.rack h2, .card h2 { font-family: var(--display); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0; }
+.rows { display: grid; gap: 6px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; border-bottom: 1px dashed var(--line); padding-bottom: 5px; }
+.row:last-child { border-bottom: 0; }
+.row .k { color: var(--muted); font-size: 14px; }
+.row .v { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .v small { color: var(--muted); font-size: 12px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { font-family: var(--display); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.on { border-color: var(--warm); color: var(--warm); }
+.pill.cool { border-color: var(--cool); color: var(--cool); }
+.pill.bad { background: var(--alert); border-color: var(--alert); color: #fff; }
+.pill.good { border-color: var(--ok); color: var(--ok); }
+.big { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.big div { display: grid; }
+.big .n { font-family: var(--display); font-size: 30px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.big .l { font-size: 12px; color: var(--muted); }
+.toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; cursor: pointer; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.chartbox { position: relative; width: 100%; height: 230px; }
+.chartbox canvas { width: 100%; height: 100%; display: block; cursor: ew-resize; touch-action: none; }
+.keys { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); }
+.keys i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin-right: 6px; border-radius: 2px; }
+input[type=range] { width: 100%; accent-color: var(--warm); }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 620px; }
+th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+th { font-family: var(--display); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: color-mix(in srgb, var(--line) 40%, transparent); }
+tbody tr.sel { background: color-mix(in srgb, var(--warm) 14%, transparent); }
+td.mono { font-family: var(--mono); font-size: 13px; }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.notes p { margin: 0; color: var(--muted); font-size: 14px; max-width: 65ch; }
+.notes strong { color: var(--fg); font-family: var(--display); font-size: 15px; letter-spacing: 0.02em; }
+.warn { font-size: 13px; color: var(--muted); border-left: 3px solid var(--warm); padding-left: 10px; }
+.lang { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; align-self: end; }
+.lang button { border: 0; border-radius: 0; min-height: 36px; padding: 7px 12px; background: var(--panel); color: var(--muted); }
+.lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+/* Thai script: no letter-spacing or uppercase, a little more line height */
+html[lang="th"] label.f, html[lang="th"] .rack h2, html[lang="th"] .card h2, html[lang="th"] .phase,
+html[lang="th"] .pill, html[lang="th"] th, html[lang="th"] .banner, html[lang="th"] button { letter-spacing: 0; text-transform: none; }
+html[lang="th"] body { line-height: 1.65; }
+html[lang="th"] label.f, html[lang="th"] .rack h2, html[lang="th"] .card h2 { font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1 data-i18n="title">Egg Incubator Digital Twin</h1>
+      <p class="sub" data-i18n="sub">A 21-day incubation of 24 chicken eggs, simulated with a physics model of heat, humidity and embryo growth. Each egg is coloured by its own temperature. The heater and fan are on the left wall.</p>
+    </div>
+    <div class="controls">
+      <div class="lang" role="group" aria-label="Language / ภาษา">
+        <button type="button" id="langTh" lang="th" aria-pressed="false">ไทย</button>
+        <button type="button" id="langEn" lang="en" aria-pressed="true">EN</button>
+      </div>
+      <label class="f" for="scenario"><span data-i18n="scenario">Scenario</span><select id="scenario"></select></label>
+      <label class="f" for="controller"><span data-i18n="controller">Controller</span><select id="controller"></select></label>
+      <label class="f" for="speed"><span data-i18n="speed">Speed</span><select id="speed">
+        <option value="12" data-i18n="sp4">1 day / 4 s</option>
+        <option value="4.8" selected data-i18n="sp10">1 day / 10 s</option>
+        <option value="1.6" data-i18n="sp30">1 day / 30 s</option>
+        <option value="0.4" data-i18n="sp120">1 day / 2 min</option>
+      </select></label>
+      <button id="play" class="primary" type="button">Play</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas id="three"></canvas>
+      <div class="clock"><div class="d" id="dayLabel">Day 0</div><div class="h" id="timeLabel">00:00</div><div class="phase" id="phaseLabel">Setter phase</div></div>
+      <div class="banner" id="banner" hidden data-i18n="outage">Power outage</div>
+      <div class="legend">
+        <div data-i18n="legend">Egg temperature (°C)</div>
+        <div class="bar"></div>
+        <div class="ticks"><span>35</span><span>36.5</span><span>37.6</span><span>38.6</span><span>39.5+</span></div>
+        <div id="flowLegend" class="flowleg" hidden>
+          <div data-i18n="flowLegend">Air vs thermometer (K)</div>
+          <div class="fbar"></div>
+          <div class="ticks"><span>−0.3</span><span>0</span><span>+0.3</span></div>
+          <div class="fnote" id="flowNote"></div>
+        </div>
+      </div>
+      <div class="hint" data-i18n="hint">Drag to rotate · scroll to zoom · hover an egg</div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+
+    <aside class="rack">
+      <h2 data-i18n="live">Live readout</h2>
+      <div class="pills" id="pills"></div>
+      <div class="rows">
+        <div class="row"><span class="k" data-i18n="rAir">Air temperature</span><span class="v" id="rAir">–</span></div>
+        <div class="row"><span class="k" data-i18n="rRh">Relative humidity</span><span class="v" id="rRh">–</span></div>
+        <div class="row"><span class="k" data-i18n="rEgg">Egg mean</span><span class="v" id="rEgg">–</span></div>
+        <div class="row"><span class="k" data-i18n="rSpread">Hottest / coldest egg</span><span class="v" id="rSpread">–</span></div>
+        <div class="row"><span class="k" data-i18n="rHeat">Heater duty</span><span class="v" id="rHeat">–</span></div>
+        <div class="row"><span class="k" data-i18n="rAmb">Room</span><span class="v" id="rAmb">–</span></div>
+        <div class="row"><span class="k" data-i18n="rDev">Development</span><span class="v" id="rDev">–</span></div>
+      </div>
+      <h2 data-i18n="outcome">Run outcome</h2>
+      <div class="big">
+        <div><span class="n" id="oHatch">–</span><span class="l" data-i18n="oHatch">expected hatch</span></div>
+        <div><span class="n" id="oWindow">–</span><span class="l" data-i18n="oWindow">hatch window</span></div>
+        <div><span class="n" id="oLoss">–</span><span class="l" data-i18n="oLoss">egg weight loss, day 18</span></div>
+        <div><span class="n" id="oEnergy">–</span><span class="l" data-i18n="oEnergy">heater energy</span></div>
+      </div>
+      <label class="toggle" for="candle"><input type="checkbox" id="candle"> <span data-i18n="candle">Candling view (see embryos)</span></label>
+      <label class="toggle" for="flow" id="flowWrap" hidden><input type="checkbox" id="flow"> <span data-i18n="flow">Airflow from CFD</span></label>
+      <label class="f" for="flowDesign" id="flowDesignWrap" hidden><span data-i18n="flowDesign">CFD design</span><select id="flowDesign"></select></label>
+      <button id="resetView" type="button" data-i18n="reset">Reset camera</button>
+    </aside>
+  </div>
+
+  <section class="card">
+    <h2 data-i18n="timeline">Timeline · click or drag to jump</h2>
+    <div class="chartbox"><canvas id="chart" data-i18n-aria="chartAria" aria-label="Temperature and humidity over the incubation"></canvas></div>
+    <input type="range" id="scrub" min="0" max="1000" value="0" data-i18n-aria="scrubAria" aria-label="Simulation time">
+    <div class="keys">
+      <span><i style="background:var(--warm);opacity:.35;height:8px"></i><span data-i18n="kRange">egg range (coldest–hottest)</span></span>
+      <span><i style="background:var(--warm)"></i><span data-i18n="kMean">egg mean</span></span>
+      <span><i style="background:var(--muted)"></i><span data-i18n="kAir">air</span></span>
+      <span><i style="background:var(--alert)"></i><span data-i18n="kStress">39 °C heat-stress line</span></span>
+      <span><i style="background:var(--cool)"></i><span data-i18n="kRh">relative humidity</span></span>
+      <span><i style="background:var(--line);height:8px"></i><span data-i18n="kEvent">outage / lid open</span></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="runs">All runs · click a row to load it</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th data-i18n="scenario">Scenario</th><th data-i18n="controller">Controller</th><th data-i18n="thHatch">Expected hatch</th><th data-i18n="thRmse">Egg T RMSE</th><th data-i18n="thMax">Max egg T</th><th data-i18n="thWindow">Hatch window</th><th data-i18n="thLoss">Weight loss</th><th data-i18n="thEnergy">Energy</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="notesTitle">What you are looking at</h2>
+    <div class="notes">
+      <p data-i18n-html="n1"></p>
+      <p data-i18n-html="n2"></p>
+      <p data-i18n-html="n3"></p>
+      <p data-i18n-html="n4"></p>
+      <p data-i18n-html="n5"></p>
+      <p class="warn" data-i18n="warn"></p>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="sim_data.js"></script>
+<script src="cfd_flow.js" onerror="window.CFD_FLOW = null"></script>
+<script>
+(() => {
+  const D = window.SIM_DATA;
+  const N = D.n_eggs, F = D.n_frames, FS = D.frame_seconds;
+  const $ = (id) => document.getElementById(id);
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  // ---------------------------------------------------------------- i18n ---
+  const I18N = {
+    en: {
+      title: "Egg Incubator Digital Twin",
+      sub: "A 21-day incubation of 24 chicken eggs, simulated with a physics model of heat, humidity and embryo growth. Each egg is coloured by its own temperature. The heater and fan are on the left wall.",
+      scenario: "Scenario", controller: "Controller", speed: "Speed",
+      sp4: "1 day / 4 s", sp10: "1 day / 10 s", sp30: "1 day / 30 s", sp120: "1 day / 2 min",
+      play: "Play", pause: "Pause", outage: "Power outage", legend: "Egg temperature (°C)",
+      hint: "Drag to rotate · scroll to zoom · hover an egg",
+      live: "Live readout", rAir: "Air temperature", rRh: "Relative humidity", rEgg: "Egg mean",
+      rSpread: "Hottest / coldest egg", rHeat: "Heater duty", rAmb: "Room", rDev: "Development",
+      outcome: "Run outcome", oHatch: "expected hatch", oWindow: "hatch window",
+      oLoss: "egg weight loss, day 18", oEnergy: "heater energy",
+      candle: "Candling view (see embryos)", reset: "Reset camera",
+      timeline: "Timeline · click or drag to jump",
+      chartAria: "Temperature and humidity over the incubation", scrubAria: "Simulation time",
+      kRange: "egg range (coldest–hottest)", kMean: "egg mean", kAir: "air", kStress: "39 °C heat-stress line",
+      kRh: "relative humidity", kEvent: "outage / lid open",
+      runs: "All runs · click a row to load it",
+      thHatch: "Expected hatch", thRmse: "Egg T RMSE", thMax: "Max egg T", thWindow: "Hatch window",
+      thLoss: "Weight loss", thEnergy: "Energy",
+      notesTitle: "What you are looking at",
+      n1: "<strong>The eggs warm themselves.</strong> After about day 10 the embryos produce up to 0.14 W of heat each, so eggs run warmer than the air. With the airflow calibrated to commercial incubators this stays below heat-stress levels. In low-airflow incubators the same heat can push eggs above 39 °C.",
+      n2: "<strong>Position matters.</strong> The left column (heater side) runs warmer than the right. Turn on candling view and hover the eggs to compare heat stress and hatch chance across the tray.",
+      n3: "<strong>Two egg-aware controllers.</strong> <em>Cascade EST</em> puts a shell-temperature sensor on one egg (row 2, column 3) and adjusts the air setpoint to keep that egg at 37.8 °C. <em>Feedforward</em> needs no extra sensor: it predicts embryo heat from the day of incubation and lowers the air setpoint in advance.",
+      n4: "<strong>Heaters cannot cool.</strong> In the hot-room scenario the room alone reaches 37 °C, and nothing in the machine can remove heat.",
+      warn: "Heat transfer is calibrated to published eggshell temperatures (Morita et al. 2016) and the hatch model to Korat chicken hatch data (Khamoun et al. 2024). The model has not been tested on a real low-cost incubator. Compare runs with each other rather than reading the numbers as exact predictions.",
+      day: (d) => "Day " + d, dayUnit: " d", dayTick: "d", lcdDay: "DAY ",
+      setter: "Setter phase · 37.5 °C / 55 %", lockdown: "Lockdown · 37.2 °C / 70 %",
+      done: (n, N) => n + " / " + N + " done",
+      powerOk: "Power OK", powerOff: "Power off", heaterOn: "Heater on", heaterOff: "Heater off",
+      fanOn: "Fan running", fanOff: "Fan stopped", mistOn: "Mist on", mistOff: "Mist off",
+      lidOpen: "Lid open", lidClosed: "Lid closed",
+      egg: (n) => "Egg " + n, pos: (r, c) => "row " + r + ", column " + c,
+      nearHeater: " · next to heater", farSide: " · far side",
+      flow: "Airflow from CFD", flowDesign: "CFD design", flowLegend: "Air vs thermometer (K)",
+      flowNote: (v) => `OpenFOAM steady airflow · moving ${v}× slower than real · warm plumes grow as embryos make heat`,
+      tOff: "CFD air offset", tHA: "CFD heat transfer",
+      n5: "<strong>Airflow (CFD).</strong> Tick <em>Airflow from CFD</em> to see the air moving inside the machine, from an OpenFOAM simulation of this cabinet. Streaks show direction and speed; colour shows whether the air is warmer (red) or cooler (blue) than the thermometer. Hover an egg to see how much heat the air exchanges with it.",
+      tTemp: "Temperature", tDev: "Development", tHatched: (d) => "hatched day " + d,
+      tHeat: "Heat stress (whole run)", tLoss: "Weight loss, day 18", tChance: "Hatch chance",
+      names: {
+        "nominal": "Normal", "power outage (d12, 6h)": "Power outage (day 12, 6 h)",
+        "candling (d7,d14, 10min)": "Candling (days 7 & 14, 10 min)", "hot room (32±5 °C)": "Hot room (32 ± 5 °C)",
+        "on-off": "On-off thermostat", "PID": "Air PID",
+        "cascade EST": "Cascade EST (shell sensor)", "feedforward": "Feedforward (no extra sensor)",
+        still_air: "No fan", side_low: "Side fan, low", side_high: "Side fan, high", side_high_baffle: "Side fan + baffle",
+        top_low: "Top fan, low", top_high: "Top fan, high",
+      },
+    },
+    th: {
+      title: "ดิจิทัลทวินตู้ฟักไข่",
+      sub: "การฟักไข่ไก่ 24 ฟองเป็นเวลา 21 วัน จำลองด้วยแบบจำลองทางฟิสิกส์ของความร้อน ความชื้น และการเจริญของตัวอ่อน ไข่แต่ละฟองแสดงสีตามอุณหภูมิของตัวเอง ฮีตเตอร์และพัดลมอยู่ที่ผนังด้านซ้าย",
+      scenario: "สถานการณ์", controller: "ตัวควบคุม", speed: "ความเร็ว",
+      sp4: "1 วัน / 4 วินาที", sp10: "1 วัน / 10 วินาที", sp30: "1 วัน / 30 วินาที", sp120: "1 วัน / 2 นาที",
+      play: "เล่น", pause: "หยุดชั่วคราว", outage: "ไฟดับ", legend: "อุณหภูมิไข่ (°C)",
+      hint: "ลากเพื่อหมุน · เลื่อนเพื่อซูม · ชี้ที่ไข่เพื่อดูรายละเอียด",
+      live: "ค่าปัจจุบัน", rAir: "อุณหภูมิอากาศ", rRh: "ความชื้นสัมพัทธ์", rEgg: "อุณหภูมิไข่เฉลี่ย",
+      rSpread: "ไข่ร้อนสุด / เย็นสุด", rHeat: "กำลังฮีตเตอร์", rAmb: "อุณหภูมิห้อง", rDev: "พัฒนาการตัวอ่อน",
+      outcome: "ผลการฟัก", oHatch: "อัตราฟักออกที่คาดการณ์", oWindow: "ช่วงเวลาที่ลูกไก่ทยอยออก",
+      oLoss: "น้ำหนักไข่ที่ลดลง วันที่ 18", oEnergy: "พลังงานฮีตเตอร์",
+      candle: "มุมมองส่องไข่ (เห็นตัวอ่อน)", reset: "รีเซ็ตมุมกล้อง",
+      timeline: "ไทม์ไลน์ · คลิกหรือลากเพื่อข้ามเวลา",
+      chartAria: "อุณหภูมิและความชื้นตลอดการฟัก", scrubAria: "เวลาในการจำลอง",
+      kRange: "ช่วงอุณหภูมิไข่ (เย็นสุด–ร้อนสุด)", kMean: "ไข่เฉลี่ย", kAir: "อากาศ", kStress: "เส้นเครียดจากความร้อน 39 °C",
+      kRh: "ความชื้นสัมพัทธ์", kEvent: "ไฟดับ / เปิดฝา",
+      runs: "ผลการจำลองทั้งหมด · คลิกแถวเพื่อเปิดดู",
+      thHatch: "อัตราฟักที่คาดการณ์", thRmse: "ความคลาดเคลื่อนอุณหภูมิไข่", thMax: "อุณหภูมิไข่สูงสุด", thWindow: "ช่วงเวลาฟักออก",
+      thLoss: "น้ำหนักที่ลดลง", thEnergy: "พลังงาน",
+      notesTitle: "สิ่งที่คุณกำลังดู",
+      n1: "<strong>ไข่ทำให้ตัวเองร้อนขึ้น</strong> หลังวันที่ 10 โดยประมาณ ตัวอ่อนผลิตความร้อนได้ถึง 0.14 วัตต์ต่อฟอง ไข่จึงอุ่นกว่าอากาศ เมื่อปรับการไหลเวียนอากาศให้ตรงกับตู้ฟักเชิงพาณิชย์ ความร้อนนี้ยังไม่ถึงระดับที่ทำให้ตัวอ่อนเครียด แต่ในตู้ที่อากาศไหลเวียนน้อย ไข่อาจร้อนเกิน 39 °C",
+      n2: "<strong>ตำแหน่งบนถาดมีผล</strong> คอลัมน์ซ้าย (ฝั่งฮีตเตอร์) ร้อนกว่าฝั่งขวา เปิดมุมมองส่องไข่แล้วชี้ที่ไข่แต่ละฟองเพื่อเปรียบเทียบความเครียดจากความร้อนและโอกาสฟักออก",
+      n3: "<strong>ตัวควบคุมที่อิงอุณหภูมิไข่ 2 แบบ</strong> <em>Cascade EST</em> ติดเซนเซอร์วัดอุณหภูมิเปลือกไข่ไว้ที่ไข่ 1 ฟอง (แถว 2 คอลัมน์ 3) แล้วปรับค่าตั้งอุณหภูมิอากาศให้ไข่ฟองนั้นอยู่ที่ 37.8 °C ส่วน <em>Feedforward</em> ไม่ต้องใช้เซนเซอร์เพิ่ม โดยคาดการณ์ความร้อนจากตัวอ่อนตามวันที่ฟัก แล้วลดค่าตั้งอุณหภูมิอากาศไว้ล่วงหน้า",
+      n4: "<strong>ฮีตเตอร์ทำความเย็นไม่ได้</strong> ในสถานการณ์ห้องร้อน อุณหภูมิห้องสูงถึง 37 °C และไม่มีอุปกรณ์ใดในตู้ที่ระบายความร้อนออกได้",
+      warn: "การถ่ายเทความร้อนปรับเทียบกับอุณหภูมิเปลือกไข่จากงานวิจัยที่ตีพิมพ์ (Morita et al. 2016) และแบบจำลองการฟักออกปรับเทียบกับข้อมูลไก่โคราช (Khamoun et al. 2024) แต่ยังไม่ได้ทดสอบกับตู้ฟักราคาประหยัดจริง จึงควรใช้เปรียบเทียบระหว่างการจำลอง ไม่ใช่ค่าทำนายที่แน่นอน",
+      day: (d) => "วันที่ " + d, dayUnit: " วัน", dayTick: "ว.", lcdDay: "DAY ",
+      setter: "ช่วงฟัก · 37.5 °C / 55 %", lockdown: "ช่วงก่อนฟักออก (ล็อกดาวน์) · 37.2 °C / 70 %",
+      done: (n, N) => "ฟักออกแล้ว " + n + " / " + N,
+      powerOk: "ไฟปกติ", powerOff: "ไฟดับ", heaterOn: "ฮีตเตอร์ทำงาน", heaterOff: "ฮีตเตอร์ปิด",
+      fanOn: "พัดลมทำงาน", fanOff: "พัดลมหยุด", mistOn: "ไอน้ำเปิด", mistOff: "ไอน้ำปิด",
+      lidOpen: "ฝาเปิด", lidClosed: "ฝาปิด",
+      egg: (n) => "ไข่ฟองที่ " + n, pos: (r, c) => "แถว " + r + " คอลัมน์ " + c,
+      nearHeater: " · ติดฮีตเตอร์", farSide: " · ฝั่งไกลฮีตเตอร์",
+      flow: "การไหลของอากาศจาก CFD", flowDesign: "แบบตู้ (CFD)", flowLegend: "อากาศเทียบกับเทอร์โมมิเตอร์ (K)",
+      flowNote: (v) => `การไหลของอากาศคงตัวจาก OpenFOAM · แสดงช้ากว่าจริง ${v} เท่า · ความร้อนจากตัวอ่อนทำให้อากาศอุ่นลอยขึ้นเหนือไข่`,
+      tOff: "อากาศรอบไข่ต่างจากเทอร์โมมิเตอร์", tHA: "การถ่ายเทความร้อน (CFD)",
+      n5: "<strong>การไหลของอากาศ (CFD)</strong> เลือก <em>การไหลของอากาศจาก CFD</em> เพื่อดูอากาศที่เคลื่อนที่ภายในตู้ จากการจำลอง OpenFOAM ของตู้นี้ เส้นแสดงทิศทางและความเร็ว สีแสดงว่าอากาศอุ่นกว่า (แดง) หรือเย็นกว่า (น้ำเงิน) ค่าที่เทอร์โมมิเตอร์วัดได้ ชี้ที่ไข่เพื่อดูว่าอากาศถ่ายเทความร้อนกับไข่ฟองนั้นมากเพียงใด",
+      tTemp: "อุณหภูมิ", tDev: "พัฒนาการ", tHatched: (d) => "ฟักออกวันที่ " + d,
+      tHeat: "ความเครียดจากความร้อน (ทั้งรอบ)", tLoss: "น้ำหนักลดลง วันที่ 18", tChance: "โอกาสฟักออก",
+      names: {
+        "nominal": "สภาวะปกติ", "power outage (d12, 6h)": "ไฟดับ (วันที่ 12, 6 ชม.)",
+        "candling (d7,d14, 10min)": "ส่องไข่ (วันที่ 7 และ 14, 10 นาที)", "hot room (32±5 °C)": "ห้องร้อน (32 ± 5 °C)",
+        "on-off": "เทอร์โมสตัทเปิด-ปิด", "PID": "PID (วัดอากาศ)",
+        "cascade EST": "Cascade EST (เซนเซอร์เปลือกไข่)", "feedforward": "Feedforward (ไม่ใช้เซนเซอร์เพิ่ม)",
+        still_air: "ไม่มีพัดลม", side_low: "พัดลมด้านข้าง (เบา)", side_high: "พัดลมด้านข้าง (แรง)", side_high_baffle: "พัดลมด้านข้าง + แผ่นกั้น",
+        top_low: "พัดลมด้านบน (เบา)", top_high: "พัดลมด้านบน (แรง)",
+      },
+    },
+  };
+  let lang = "en";
+  try { lang = localStorage.getItem("incubator-lang") || ""; } catch (e) { lang = ""; }
+  if (!I18N[lang]) lang = (navigator.language || "").toLowerCase().startsWith("th") ? "th" : "en";
+  const t = (k) => I18N[lang][k];
+  const nm = (raw) => I18N[lang].names[raw] || raw;
+
+  // ---------------------------------------------------------------- data ---
+  const runs = D.runs.map((r) => {
+    const egg = Float32Array.from(r.t_egg, (v) => v / 100);
+    const dev = Float32Array.from(r.dev, (v) => v / 1000);
+    const mn = new Float32Array(F), mx = new Float32Array(F), mean = new Float32Array(F), dmean = new Float32Array(F);
+    for (let f = 0; f < F; f++) {
+      let a = Infinity, b = -Infinity, s = 0, ds = 0;
+      for (let i = 0; i < N; i++) { const t = egg[f * N + i]; a = Math.min(a, t); b = Math.max(b, t); s += t; ds += dev[f * N + i]; }
+      mn[f] = a; mx[f] = b; mean[f] = s / N; dmean[f] = ds / N;
+    }
+    const d = (k) => Float32Array.from(r[k], (v) => v / 100);
+    return { ...r, egg, devA: dev, mn, mx, mean, dmean, air: d("t_air"), rhA: Float32Array.from(r.rh), heat: d("heater"), hum: d("humidifier"), amb: d("t_amb") };
+  });
+  const scenarios = [...new Set(runs.map((r) => r.scenario))];
+  const controllers = [...new Set(runs.map((r) => r.controller))];
+  for (const s of scenarios) $("scenario").add(new Option(nm(s), s));
+  for (const c of controllers) $("controller").add(new Option(nm(c), c));
+  $("controller").value = controllers.includes("PID") ? "PID" : controllers[0];
+  let run = null;
+  const setpoint = (day) => (day < 18 ? [37.5, 55] : [37.2, 70]);
+
+  // ---------------------------------------------------------- 3D scene ---
+  const canvas = $("three"), stage = $("stage");
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(38, 1.6, 0.1, 100);
+  const HOME = new THREE.Vector3(5.6, 4.6, 7.4);
+  camera.position.copy(HOME);
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.target.set(0, 1.0, 0);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI * 0.49;
+  controls.minDistance = 3; controls.maxDistance = 16;
+
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x556066, 0.75); scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xffffff, 0.65);
+  sun.position.set(3, 9, 6); sun.castShadow = true; sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4 }); scene.add(sun);
+
+  const W = 4.6, H = 2.7, Dp = 3.2, T = 0.09; // inner width (x), height (y), depth (z), wall
+  const shell = new THREE.MeshStandardMaterial({ color: 0xf1f3f2, roughness: 0.55 });
+  const inner = new THREE.MeshStandardMaterial({ color: 0xd8dedc, roughness: 0.8, side: THREE.DoubleSide });
+  const box = (w, h, d, m, x, y, z) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); o.receiveShadow = true; scene.add(o); return o; };
+  box(W + 2 * T, T, Dp + 2 * T, shell, 0, -T / 2, 0);                 // floor
+  box(W + 2 * T, H, T, inner, 0, H / 2, -Dp / 2 - T / 2);              // back
+  box(T, H, Dp + 2 * T, inner, -W / 2 - T / 2, H / 2, 0);             // left (heater side)
+  box(T, H, Dp + 2 * T, inner, W / 2 + T / 2, H / 2, 0);              // right
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(W, H), new THREE.MeshStandardMaterial({ color: 0xbfdde3, transparent: true, opacity: 0.1, roughness: 0.05, depthWrite: false }));
+  glass.position.set(0, H / 2, Dp / 2 + T / 2); scene.add(glass);
+  // lid hinged at back edge
+  const lid = new THREE.Group(); lid.position.set(0, H, -Dp / 2 - T); scene.add(lid);
+  const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(W + 2 * T, T, Dp + 2 * T), new THREE.MeshStandardMaterial({ color: 0xf1f3f2, transparent: true, opacity: 0.35, depthWrite: false }));
+  lidMesh.position.set(0, T / 2, (Dp + 2 * T) / 2); lid.add(lidMesh);
+
+  // heater: glowing coil rods on the left wall
+  const coilMat = new THREE.MeshStandardMaterial({ color: 0x6b4a3a, emissive: 0xff5a14, emissiveIntensity: 0, roughness: 0.4 });
+  const heaterG = new THREE.Group(); scene.add(heaterG);
+  for (let k = 0; k < 5; k++) {
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.4, 12), coilMat);
+    rod.rotation.x = Math.PI / 2; rod.position.set(0, (k - 2) * 0.12, 0); heaterG.add(rod);
+  }
+  const HEATER_HOME = new THREE.Vector3(-W / 2 + 0.12, 1.79, 0); heaterG.position.copy(HEATER_HOME);
+  const heatLight = new THREE.PointLight(0xff7a2a, 0, 4); heatLight.position.set(-W / 2 + 0.4, 1.8, 0); scene.add(heatLight);
+  // fan
+  const fanPivot = new THREE.Group(); scene.add(fanPivot);           // moved / turned per CFD design
+  const FAN_HOME = new THREE.Vector3(-W / 2 + 0.16, 2.25, 0); fanPivot.position.copy(FAN_HOME);
+  const fan = new THREE.Group(); fanPivot.add(fan);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.03, 8, 32), new THREE.MeshStandardMaterial({ color: 0x8a9692 }));
+  ring.rotation.y = Math.PI / 2; fanPivot.add(ring);
+  const baffleMesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xa9b4b1, transparent: true, opacity: 0.45, depthWrite: false }));
+  baffleMesh.visible = false; scene.add(baffleMesh);
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0x55615e, roughness: 0.5 });
+  for (let k = 0; k < 4; k++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.28, 0.1), bladeMat);
+    const g = new THREE.Group(); g.rotation.x = (k * Math.PI) / 2; b.position.y = 0.16; b.rotation.y = 0.5; g.add(b); fan.add(g);
+  }
+  // water tray + humidifier mist
+  const water = box(2.6, 0.12, 1.0, new THREE.MeshStandardMaterial({ color: 0x3f8fb0, transparent: true, opacity: 0.65, roughness: 0.1 }), 0.4, 0.06, 0);
+  const MIST = 220, mpos = new Float32Array(MIST * 3), mspd = new Float32Array(MIST);
+  for (let i = 0; i < MIST; i++) { mpos[i * 3] = 0.4 + (Math.random() - 0.5) * 2.4; mpos[i * 3 + 1] = Math.random() * 0.8; mpos[i * 3 + 2] = (Math.random() - 0.5) * 0.9; mspd[i] = 0.2 + Math.random() * 0.4; }
+  const mgeo = new THREE.BufferGeometry(); mgeo.setAttribute("position", new THREE.BufferAttribute(mpos, 3));
+  const mmat = new THREE.PointsMaterial({ color: 0xcfeaf2, size: 0.05, transparent: true, opacity: 0, depthWrite: false });
+  scene.add(new THREE.Points(mgeo, mmat));
+  // tray (wire grid)
+  // tray layout matches the CFD geometry (cfd/make_case.py: 0.5 x 0.4 x 0.3 m box, eggs at 64 mm pitch,
+  // tray centre 0.27 m from the heater wall, egg base 0.10 m up) so airflow lines up with the eggs
+  const TRAY_Y = 0.88, SPX = (0.064 / 0.5) * W, SPZ = (0.064 / 0.4) * Dp, cols = D.tray.cols, rows = D.tray.rows;
+  const trayW = cols * SPX + 0.2, trayD = rows * SPZ + 0.2, TRAY_X = -W / 2 + (0.27 / 0.5) * W;
+  box(trayW, 0.04, trayD, new THREE.MeshStandardMaterial({ color: 0x9aa6a2, metalness: 0.4, roughness: 0.5, transparent: true, opacity: 0.55 }), TRAY_X, TRAY_Y, 0);
+  // control box with LCD outside the right wall
+  box(0.5, 1.1, 1.3, new THREE.MeshStandardMaterial({ color: 0x2c3533, roughness: 0.6 }), W / 2 + T + 0.25, 1.3, 0.6);
+  const lcdCanvas = document.createElement("canvas"); lcdCanvas.width = 256; lcdCanvas.height = 160;
+  const lcd = lcdCanvas.getContext("2d"); const lcdTex = new THREE.CanvasTexture(lcdCanvas);
+  const lcdMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.69), new THREE.MeshBasicMaterial({ map: lcdTex }));
+  lcdMesh.rotation.y = Math.PI / 2; lcdMesh.position.set(W / 2 + T + 0.505, 1.45, 0.6); scene.add(lcdMesh);
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 12, 12), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0x40c060, emissiveIntensity: 1 }));
+  led.position.set(W / 2 + T + 0.51, 0.95, 0.6); scene.add(led);
+
+  // eggs
+  const prof = []; for (let k = 0; k <= 24; k++) { const a = (k / 24) * Math.PI; prof.push(new THREE.Vector2(Math.sin(a) * 0.19 * (1 + 0.13 * Math.cos(a)), -Math.cos(a) * 0.25)); }
+  const eggGeo = new THREE.LatheGeometry(prof, 32);
+  const embGeo = new THREE.SphereGeometry(1, 16, 12);
+  const eggs = [];
+  for (let i = 0; i < N; i++) {
+    const c = D.tray.col[i], r = D.tray.row[i];
+    const x = TRAY_X - ((cols - 1) * SPX) / 2 + c * SPX, z = -((rows - 1) * SPZ) / 2 + r * SPZ;
+    const mat = new THREE.MeshStandardMaterial({ color: 0xf2e8d5, roughness: 0.6, transparent: true, opacity: 1 });
+    const m = new THREE.Mesh(eggGeo, mat); m.position.set(x, TRAY_Y + 0.27, z); m.castShadow = true; m.userData.i = i; scene.add(m);
+    const emb = new THREE.Mesh(embGeo, new THREE.MeshStandardMaterial({ color: 0x9a2a1e, emissive: 0x5a0d05, emissiveIntensity: 0.5 }));
+    emb.position.set(x, TRAY_Y + 0.25, z); emb.visible = false; scene.add(emb);
+    const chick = makeChick(); chick.position.set(x, TRAY_Y + 0.02, z); chick.rotation.y = Math.random() * 6; chick.visible = false; scene.add(chick);
+    chick.traverse((o) => (o.userData.i = i));
+    eggs.push({ mesh: m, mat, emb, chick, col: c, row: r });
+  }
+  function makeChick() {
+    const g = new THREE.Group(); const yellow = new THREE.MeshStandardMaterial({ color: 0xf7d046, roughness: 0.9 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.17, 16, 12), yellow); body.scale.set(1, 0.9, 1.1); body.position.y = 0.17; body.castShadow = true;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), yellow); head.position.set(0, 0.36, 0.1);
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.08, 8), new THREE.MeshStandardMaterial({ color: 0xe0782a })); beak.rotation.x = Math.PI / 2; beak.position.set(0, 0.35, 0.22);
+    const eyeM = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const e1 = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), eyeM); e1.position.set(0.05, 0.39, 0.18);
+    const e2 = e1.clone(); e2.position.x = -0.05;
+    g.add(body, head, beak, e1, e2); return g;
+  }
+  const STOPS = [[35, [0.23, 0.44, 0.71]], [36.5, [0.62, 0.78, 0.86]], [37.6, [0.95, 0.91, 0.84]], [38.6, [0.96, 0.64, 0.32]], [39.5, [0.78, 0.21, 0.17]]];
+  function tempColor(t, out) {
+    if (t <= STOPS[0][0]) return out.setRGB(...STOPS[0][1]);
+    for (let k = 1; k < STOPS.length; k++) {
+      if (t <= STOPS[k][0]) { const [t0, a] = STOPS[k - 1], [t1, b] = STOPS[k]; const u = (t - t0) / (t1 - t0); return out.setRGB(a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u); }
+    }
+    return out.setRGB(...STOPS[STOPS.length - 1][1]);
+  }
+
+  // ------------------------------------------------------------ CFD flow ---
+  // Particles advected through the steady CFD velocity field (trilinear on a uniform grid, CFD axes:
+  // x away from the heater wall, y depth, z up). Colour = air temperature minus the thermometer reading,
+  // blended from the adiabatic to the heated-egg solution as the embryos start producing heat.
+  const CF = window.CFD_FLOW || null, SLOW = 4;
+  const flow = { on: false, d: null, u: null, ta: null, th: null, w: 0, step: () => {}, show: () => {}, placeHardware: () => {} };
+  if (CF && Object.keys(CF.designs).length) {
+    const [Lc, Wc, Hc] = CF.box, [nx, ny, nz] = CF.n, dx = CF.dx, NP = 1500;
+    const P = new Float32Array(NP * 3), age = new Float32Array(NP), life = new Float32Array(NP);
+    const lpos = new Float32Array(NP * 6), lcol = new Float32Array(NP * 6), ppos = new Float32Array(NP * 3), pcol = new Float32Array(NP * 3);
+    const geo = (pos, colr) => { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(colr, 3)); return g; };
+    const lgeo = geo(lpos, lcol), pgeo = geo(ppos, pcol);
+    const lines = new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false }));
+    const heads = new THREE.Points(pgeo, new THREE.PointsMaterial({ size: 0.075, vertexColors: true, transparent: true, opacity: 1, depthWrite: false }));
+    lines.frustumCulled = heads.frustumCulled = false; lines.visible = heads.visible = false; scene.add(lines, heads);
+    const s4 = new Float32Array(4);
+    const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+    function sampleAt(x, y, z) {
+      const fx = clamp(x / dx - 0.5, 0, nx - 1.0001), fy = clamp(y / dx - 0.5, 0, ny - 1.0001), fz = clamp(z / dx - 0.5, 0, nz - 1.0001);
+      const i = fx | 0, j = fy | 0, k = fz | 0, a = fx - i, b = fy - j, c = fz - k;
+      s4.fill(0);
+      for (let dk = 0; dk < 2; dk++) for (let dj = 0; dj < 2; dj++) for (let di = 0; di < 2; di++) {
+        const wt = (di ? a : 1 - a) * (dj ? b : 1 - b) * (dk ? c : 1 - c), n = ((k + dk) * ny + (j + dj)) * nx + (i + di);
+        s4[0] += wt * flow.u[n * 3]; s4[1] += wt * flow.u[n * 3 + 1]; s4[2] += wt * flow.u[n * 3 + 2];
+        s4[3] += wt * (flow.th ? flow.ta[n] + (flow.th[n] - flow.ta[n]) * flow.w : flow.ta[n]);
+      }
+      return s4;
+    }
+    const LO = [0.23, 0.44, 0.71], MID = [0.62, 0.63, 0.62], HI = [0.78, 0.21, 0.17];
+    function paint(dT, o, k) { const v = clamp(dT / 0.3, -1, 1), e = v < 0 ? LO : HI, u = Math.abs(v); for (let q = 0; q < 3; q++) o[k + q] = MID[q] + (e[q] - MID[q]) * u; }
+    const toWeb = (x, y, z, o, k) => { o[k] = -W / 2 + (x / Lc) * W; o[k + 1] = (z / Hc) * H; o[k + 2] = -Dp / 2 + (y / Wc) * Dp; };
+    const v3 = new Float32Array(3), cw = (x, y, z) => (toWeb(x, y, z, v3, 0), new THREE.Vector3(v3[0], v3[1], v3[2]));
+    flow.placeHardware = (on) => {
+      const e = on ? flow.d : null;
+      if (!e) {                                    // default machine (side fan, heater in its jet)
+        fanPivot.visible = true; fanPivot.position.copy(FAN_HOME); fanPivot.rotation.set(0, 0, 0);
+        heaterG.position.copy(HEATER_HOME); heaterG.rotation.set(0, 0, 0); heaterG.scale.set(1, 1, 1);
+        baffleMesh.visible = false; heatLight.position.set(-W / 2 + 0.4, 1.8, 0); return;
+      }
+      fanPivot.visible = !!e.fan;
+      if (e.fan) {
+        const [c, ax] = [e.fan.centre, e.fan.axis];
+        fanPivot.position.copy(cw(...c)); fanPivot.rotation.set(0, 0, ax[2] !== 0 ? Math.PI / 2 : 0);
+      }
+      const [lo, hi] = e.heater, a = cw(...lo), b = cw(...hi), mid = a.clone().add(b).multiplyScalar(0.5);
+      heaterG.position.copy(mid);
+      const flat = hi[2] - lo[2] < hi[0] - lo[0];   // ceiling heater: rods side by side horizontally
+      heaterG.rotation.set(0, 0, flat ? Math.PI / 2 : 0);
+      heaterG.scale.set(1, flat ? Math.abs(b.x - a.x) / 0.55 : Math.abs(b.y - a.y) / 0.55, Math.abs(b.z - a.z) / 1.4);
+      heatLight.position.copy(mid);
+      baffleMesh.visible = !!e.baffle;
+      if (e.baffle) {
+        const p = cw(...e.baffle[0]), q = cw(...e.baffle[1]);
+        baffleMesh.position.copy(p.clone().add(q).multiplyScalar(0.5));
+        baffleMesh.scale.set(Math.max(Math.abs(q.x - p.x), 0.03), Math.abs(q.y - p.y), Math.abs(q.z - p.z));
+      }
+    };
+    function spawn(p) { P[p * 3] = Math.random() * Lc; P[p * 3 + 1] = Math.random() * Wc; P[p * 3 + 2] = Math.random() * Hc; age[p] = 0; life[p] = 3 + Math.random() * 5; }
+    flow.setDesign = (name) => {
+      const e = CF.designs[name]; flow.d = e;
+      flow.u = Float32Array.from(e.u, (v) => v / 1000);
+      flow.ta = Float32Array.from(e.dT_adiabatic, (v) => v / 1000);
+      flow.th = e.dT_heated ? Float32Array.from(e.dT_heated, (v) => v / 1000) : null;
+      for (let p = 0; p < NP; p++) { spawn(p); age[p] = Math.random() * life[p]; }
+      flow.step(0);
+    };
+    flow.step = (dt) => {
+      for (let p = 0; p < NP; p++) {
+        let x = P[p * 3], y = P[p * 3 + 1], z = P[p * 3 + 2];
+        let s = sampleAt(x, y, z);
+        x += (s[0] * dt) / SLOW; y += (s[1] * dt) / SLOW; z += (s[2] * dt) / SLOW; age[p] += dt;
+        const sp = Math.hypot(s[0], s[1], s[2]);
+        if (x < 0 || x > Lc || y < 0 || y > Wc || z < 0 || z > Hc || age[p] > life[p] || (sp < 0.01 && age[p] > 1)) { spawn(p); x = P[p * 3]; y = P[p * 3 + 1]; z = P[p * 3 + 2]; s = sampleAt(x, y, z); }
+        P[p * 3] = x; P[p * 3 + 1] = y; P[p * 3 + 2] = z;
+        const tl = Math.min(0.08, 0.12 / Math.max(Math.hypot(s[0], s[1], s[2]), 1e-6));   // trail: 0.08 s of travel, max 12 cm
+        toWeb(x, y, z, lpos, p * 6); toWeb(clamp(x - s[0] * tl, 0, Lc), clamp(y - s[1] * tl, 0, Wc), clamp(z - s[2] * tl, 0, Hc), lpos, p * 6 + 3); toWeb(x, y, z, ppos, p * 3);
+        paint(s[3], lcol, p * 6); paint(s[3], lcol, p * 6 + 3); paint(s[3], pcol, p * 3);
+        for (let q = 0; q < 3; q++) lcol[p * 6 + 3 + q] = lcol[p * 6 + 3 + q] * 0.6 + MID[q] * 0.4;   // tail fades to grey
+      }
+      lgeo.attributes.position.needsUpdate = lgeo.attributes.color.needsUpdate = true;
+      pgeo.attributes.position.needsUpdate = pgeo.attributes.color.needsUpdate = true;
+    };
+    flow.show = (v) => { lines.visible = heads.visible = v; };
+    const names = Object.keys(CF.designs);
+    for (const n of names) $("flowDesign").add(new Option(nm(n), n));
+    $("flowDesign").value = names.includes("side_high") ? "side_high" : names[0];
+    $("flowWrap").hidden = false;
+    $("flowDesignWrap").hidden = names.length < 2;
+    flow.setDesign($("flowDesign").value);
+    $("flow").addEventListener("change", (e) => { flow.on = e.target.checked; $("flowLegend").hidden = !flow.on; flow.placeHardware(flow.on); lastShown = -1; });
+    $("flowDesign").addEventListener("change", (e) => { flow.setDesign(e.target.value); flow.placeHardware(flow.on); lastShown = -1; });
+  }
+
+  // ---------------------------------------------------------- playback ---
+  let cur = 0, playing = false, lastT = performance.now(), lastShown = -1, candle = false, hoverI = -1;
+  const lerp = (arr, f) => { const a = Math.floor(f), b = Math.min(a + 1, F - 1), u = f - a; return arr[a] * (1 - u) + arr[b] * u; };
+  const eggAt = (i, f) => { const a = Math.floor(f), b = Math.min(a + 1, F - 1), u = f - a; return run.egg[a * N + i] * (1 - u) + run.egg[b * N + i] * u; };
+
+  function selectRun() {
+    const s = $("scenario").value, c = $("controller").value;
+    run = runs.find((r) => r.scenario === s && r.controller === c);
+    const S = run.summary;
+    $("oHatch").textContent = S.expected_hatch_.toFixed(0) + "%";
+    $("oWindow").textContent = S.hatch_window_h == null ? "–" : S.hatch_window_h.toFixed(0) + " h";
+    $("oLoss").textContent = S.weight_loss_.toFixed(1) + "%";
+    $("oEnergy").textContent = S.energy_kWh.toFixed(2) + " kWh";
+    document.querySelectorAll("#tbody tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.s === s && tr.dataset.c === c));
+    drawChartBase(); lastShown = -1;
+  }
+  // summary keys contain "%" — normalise access
+  runs.forEach((r) => { r.summary.expected_hatch_ = r.summary["expected_hatch_%"]; r.summary.weight_loss_ = r.summary["weight_loss_%"]; });
+
+  const col = new THREE.Color(), grey = new THREE.Color(0x8c8f8e);
+  function applyFrame(f, dtSec) {
+    const fi = Math.min(F - 1, Math.round(f));
+    const heat = run.heat[fi], hum = run.hum[fi], power = run.power[fi], door = run.door[fi];
+    // eggs
+    for (let i = 0; i < N; i++) {
+      const e = eggs[i], dv = run.devA[fi * N + i];
+      const hatched = dv >= 1;
+      const ok = run.hatch_prob[i] >= 0.5;
+      e.chick.visible = hatched && ok;
+      e.mesh.visible = !(hatched && ok);
+      if (hatched && !ok) e.mat.color.copy(grey); else tempColor(eggAt(i, f), e.mat.color);
+      e.mat.opacity = candle ? 0.32 : 1;
+      e.mat.emissive.setRGB(i === hoverI ? 0.25 : 0, i === hoverI ? 0.25 : 0, i === hoverI ? 0.25 : 0);
+      e.emb.visible = candle && e.mesh.visible && dv > 0.02;
+      const s = 0.02 + 0.13 * Math.min(dv, 1); e.emb.scale.set(s, s * 1.15, s);
+    }
+    // machine
+    coilMat.emissiveIntensity = power ? 0.05 + 2.2 * heat : 0;
+    heatLight.intensity = power ? 1.6 * heat : 0;
+    fan.userData.speed = power ? 18 : 0;
+    mmat.opacity = power ? Math.min(0.75, hum * 1.3) : 0;
+    lid.userData.target = door ? -1.05 : 0;
+    hemi.intensity = power ? 0.75 : 0.42;
+    led.material.emissive.setHex(power ? 0x40c060 : 0xd03020);
+    if (fi !== lastShown) { updateReadouts(fi); lastShown = fi; }
+  }
+
+  function updateReadouts(fi) {
+    const ts = (fi + 1) * FS, day = ts / 86400, [tsp, rsp] = setpoint(day);
+    $("dayLabel").textContent = t("day")(Math.floor(day));
+    const hh = Math.floor((ts % 86400) / 3600), mm = Math.floor((ts % 3600) / 60);
+    $("timeLabel").textContent = String(hh).padStart(2, "0") + ":" + String(mm).padStart(2, "0") + " · " + day.toFixed(2) + t("dayUnit");
+    $("phaseLabel").textContent = day < 18 ? t("setter") : t("lockdown");
+    $("rAir").innerHTML = run.air[fi].toFixed(2) + " °C <small>/ " + tsp + "</small>";
+    $("rRh").innerHTML = run.rhA[fi].toFixed(1) + " % <small>/ " + rsp + "</small>";
+    $("rEgg").textContent = run.mean[fi].toFixed(2) + " °C";
+    $("rSpread").textContent = run.mx[fi].toFixed(1) + " / " + run.mn[fi].toFixed(1);
+    $("rSpread").style.color = run.mx[fi] > 39 ? "var(--alert)" : "";
+    $("rHeat").textContent = (100 * run.heat[fi]).toFixed(0) + " %";
+    $("rAmb").textContent = run.amb[fi].toFixed(1) + " °C";
+    let nh = 0; for (let i = 0; i < N; i++) if (run.devA[fi * N + i] >= 1) nh++;
+    $("rDev").textContent = nh ? t("done")(nh, N) : (100 * run.dmean[fi]).toFixed(0) + " %";
+    const power = run.power[fi], door = run.door[fi];
+    const pills = [
+      [t(power ? "powerOk" : "powerOff"), power ? "good" : "bad"],
+      [t(power && run.heat[fi] > 0.01 ? "heaterOn" : "heaterOff"), power && run.heat[fi] > 0.01 ? "on" : ""],
+      [t(power ? "fanOn" : "fanOff"), power ? "" : "bad"],
+      [t(power && run.hum[fi] > 0.01 ? "mistOn" : "mistOff"), power && run.hum[fi] > 0.01 ? "cool" : ""],
+      [t(door ? "lidOpen" : "lidClosed"), door ? "on" : ""],
+    ];
+    $("pills").innerHTML = pills.map(([t, c]) => `<span class="pill ${c}">${t}</span>`).join("");
+    $("banner").hidden = !!power;
+    $("scrub").value = Math.round((fi / (F - 1)) * 1000);
+    // LCD
+    lcd.fillStyle = "#0e1a14"; lcd.fillRect(0, 0, 256, 160);
+    lcd.fillStyle = power ? "#7ef0a0" : "#2a4a35"; lcd.font = "bold 46px monospace";
+    lcd.fillText(run.air[fi].toFixed(1) + "°C", 18, 64);
+    lcd.font = "bold 34px monospace"; lcd.fillText(run.rhA[fi].toFixed(0) + "%RH", 18, 112);
+    lcd.font = "22px monospace"; lcd.fillText("DAY " + day.toFixed(1), 18, 146);
+    lcdTex.needsUpdate = true;
+    drawPlayhead(fi);
+    if (hoverI >= 0) showTip(hoverI, fi);
+  }
+
+  // --------------------------------------------------------------- chart ---
+  const chart = $("chart"), cctx = chart.getContext("2d");
+  let base = document.createElement("canvas"), cw = 0, ch = 0, PAD = { l: 44, r: 12, t: 10, b: 22 };
+  function sizeChart() {
+    const r = chart.getBoundingClientRect(), dpr = Math.min(devicePixelRatio, 2);
+    cw = r.width; ch = r.height; chart.width = base.width = cw * dpr; chart.height = base.height = ch * dpr;
+    base.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0); cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  const X = (f) => PAD.l + (f / (F - 1)) * (cw - PAD.l - PAD.r);
+  function drawChartBase() {
+    if (!run) return;
+    const g = base.getContext("2d"), fg = css("--fg"), mut = css("--muted"), line = css("--line"), warm = css("--warm"), cool = css("--cool"), alert = css("--alert");
+    g.clearRect(0, 0, cw, ch);
+    const top = { y0: PAD.t, y1: ch * 0.66, lo: 34, hi: 41 }, bot = { y0: ch * 0.66 + 14, y1: ch - PAD.b, lo: 40, hi: 80 };
+    const Y = (p, v) => p.y1 - ((v - p.lo) / (p.hi - p.lo)) * (p.y1 - p.y0);
+    // events
+    g.fillStyle = line;
+    for (let f = 0; f < F; f++) if (!run.power[f] || run.door[f]) g.fillRect(X(f) - 1, PAD.t, Math.max(2, X(1) - X(0)), ch - PAD.t - PAD.b);
+    // grid + labels
+    g.font = "11px " + css("--mono"); g.fillStyle = mut; g.strokeStyle = line; g.lineWidth = 1;
+    for (const v of [35, 37, 39, 41]) { const y = Y(top, v); g.beginPath(); g.moveTo(PAD.l, y); g.lineTo(cw - PAD.r, y); g.stroke(); g.fillText(v + "°", 6, y + 4); }
+    for (const v of [40, 60, 80]) { const y = Y(bot, v); g.beginPath(); g.moveTo(PAD.l, y); g.lineTo(cw - PAD.r, y); g.stroke(); g.fillText(v + "%", 6, y + 4); }
+    const fpd = 86400 / FS;
+    for (let d = 0; d * fpd < F; d += cw < 500 ? 6 : 3) g.fillText(t("dayTick") + d, X(d * fpd) - 6, ch - 6);
+    // egg band
+    g.fillStyle = warm; g.globalAlpha = 0.25; g.beginPath();
+    for (let f = 0; f < F; f++) g.lineTo(X(f), Y(top, Math.max(top.lo, run.mx[f])));
+    for (let f = F - 1; f >= 0; f--) g.lineTo(X(f), Y(top, Math.max(top.lo, run.mn[f])));
+    g.fill(); g.globalAlpha = 1;
+    const plot = (arr, p, color, w, dash) => { g.strokeStyle = color; g.lineWidth = w; g.setLineDash(dash || []); g.beginPath(); for (let f = 0; f < F; f++) g.lineTo(X(f), Y(p, Math.min(p.hi, Math.max(p.lo, arr[f])))); g.stroke(); g.setLineDash([]); };
+    plot(run.air, top, mut, 1);
+    plot(run.mean, top, warm, 2);
+    g.strokeStyle = alert; g.setLineDash([4, 4]); g.beginPath(); g.moveTo(PAD.l, Y(top, 39)); g.lineTo(cw - PAD.r, Y(top, 39)); g.stroke(); g.setLineDash([]);
+    plot(run.rhA, bot, cool, 1.5);
+    // setpoints
+    const sp = (p, k) => { g.strokeStyle = fg; g.globalAlpha = 0.5; g.setLineDash([2, 3]); g.beginPath(); for (let f = 0; f < F; f++) g.lineTo(X(f), Y(p, setpoint((f * FS) / 86400)[k])); g.stroke(); g.setLineDash([]); g.globalAlpha = 1; };
+    sp(top, 0); sp(bot, 1);
+    drawPlayhead(Math.round(cur));
+  }
+  function drawPlayhead(fi) {
+    if (!cw) return;
+    cctx.clearRect(0, 0, cw, ch); cctx.drawImage(base, 0, 0, cw, ch);
+    const x = X(fi); cctx.strokeStyle = css("--fg"); cctx.lineWidth = 1.5;
+    cctx.beginPath(); cctx.moveTo(x, PAD.t); cctx.lineTo(x, ch - PAD.b); cctx.stroke();
+  }
+  function seekFromEvent(ev) {
+    const r = chart.getBoundingClientRect();
+    cur = Math.max(0, Math.min(F - 1, ((ev.clientX - r.left - PAD.l) / (cw - PAD.l - PAD.r)) * (F - 1)));
+  }
+  let dragging = false;
+  chart.addEventListener("pointerdown", (e) => { dragging = true; chart.setPointerCapture(e.pointerId); seekFromEvent(e); });
+  chart.addEventListener("pointermove", (e) => dragging && seekFromEvent(e));
+  chart.addEventListener("pointerup", () => (dragging = false));
+  $("scrub").addEventListener("input", (e) => (cur = (e.target.value / 1000) * (F - 1)));
+
+  // ------------------------------------------------------------- tooltip ---
+  const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  const pickables = () => eggs.flatMap((e) => [e.mesh, e.chick]);
+  function pick(ev) {
+    const r = canvas.getBoundingClientRect();
+    ptr.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ptr, camera);
+    const hit = ray.intersectObjects(pickables(), true).find((h) => h.object.visible);
+    hoverI = hit ? hit.object.userData.i : -1;
+    const tip = $("tip");
+    if (hoverI < 0) { tip.hidden = true; lastShown = -1; return; }
+    showTip(hoverI, Math.round(cur));
+    const sr = stage.getBoundingClientRect();
+    let x = ev.clientX - sr.left + 14, y = ev.clientY - sr.top + 14;
+    tip.hidden = false;
+    if (x + tip.offsetWidth > sr.width - 8) x = ev.clientX - sr.left - tip.offsetWidth - 14;
+    if (y + tip.offsetHeight > sr.height - 8) y = ev.clientY - sr.top - tip.offsetHeight - 14;
+    tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px";
+    lastShown = -1;
+  }
+  function showTip(i, fi) {
+    const e = eggs[i], dv = run.devA[fi * N + i], hd = run.hatch_day[i], p = run.hatch_prob[i];
+    const side = e.col === 0 ? t("nearHeater") : e.col === cols - 1 ? t("farSide") : "";
+    const row = (k, v) => `<div class="r"><span>${k}</span><span>${v}</span></div>`;
+    $("tip").innerHTML = `<b>${t("egg")(i + 1)}</b><div style="color:var(--muted);font-size:12px">${t("pos")(e.row + 1, e.col + 1)}${side}</div>` +
+      row(t("tTemp"), eggAt(i, fi).toFixed(2) + " °C") +
+      row(t("tDev"), dv >= 1 ? t("tHatched")(hd.toFixed(1)) : (100 * dv).toFixed(0) + " %") +
+      row(t("tHeat"), run.hot_dh[i].toFixed(1) + " °C·h") +
+      row(t("tLoss"), run.weight_loss[i] == null ? "–" : (100 * run.weight_loss[i]).toFixed(1) + " %") +
+      row(t("tChance"), (100 * p).toFixed(0) + " %") +
+      (flow.on && flow.d && flow.d.egg_offset_C ? row(t("tOff"), (flow.d.egg_offset_C[i] >= 0 ? "+" : "−") + Math.abs(flow.d.egg_offset_C[i]).toFixed(2) + " K") +
+        row(t("tHA"), flow.d.egg_hA_W_per_K[i].toFixed(3) + " W/K") : "");
+  }
+  canvas.addEventListener("pointermove", pick);
+  canvas.addEventListener("pointerdown", pick);
+  canvas.addEventListener("pointerleave", () => { hoverI = -1; $("tip").hidden = true; lastShown = -1; });
+
+  // -------------------------------------------------------------- table ---
+  const tb = $("tbody");
+  function buildTable() {
+  tb.innerHTML = "";
+  for (const s of scenarios) for (const c of controllers) {
+    const r = runs.find((x) => x.scenario === s && x.controller === c), S = r.summary;
+    const tr = document.createElement("tr"); tr.dataset.s = s; tr.dataset.c = c; tr.tabIndex = 0;
+    tr.innerHTML = `<td>${nm(s)}</td><td>${nm(c)}</td><td class="mono">${S.expected_hatch_.toFixed(1)} %</td><td class="mono">${S.egg_T_rmse.toFixed(2)} °C</td><td class="mono">${S.egg_T_max.toFixed(1)} °C</td><td class="mono">${S.hatch_window_h == null ? "–" : S.hatch_window_h.toFixed(0) + " h"}</td><td class="mono">${S.weight_loss_.toFixed(1)} %</td><td class="mono">${S.energy_kWh.toFixed(2)} kWh</td>`;
+    const go = () => { $("scenario").value = s; $("controller").value = c; selectRun(); };
+    tr.addEventListener("click", go); tr.addEventListener("keydown", (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), go()));
+    tb.appendChild(tr);
+  }
+  }
+  buildTable();
+
+  function applyLang(l) {
+    lang = l;
+    try { localStorage.setItem("incubator-lang", l); } catch (e) { /* storage unavailable */ }
+    document.documentElement.lang = l;
+    document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
+    document.querySelectorAll("[data-i18n-html]").forEach((el) => (el.innerHTML = t(el.dataset.i18nHtml)));
+    document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
+    [...$("scenario").options].forEach((o) => (o.textContent = nm(o.value)));
+    [...$("controller").options].forEach((o) => (o.textContent = nm(o.value)));
+    $("play").textContent = t(playing ? "pause" : "play");
+    $("langTh").setAttribute("aria-pressed", String(l === "th"));
+    $("langEn").setAttribute("aria-pressed", String(l === "en"));
+    $("flowNote").textContent = t("flowNote")(SLOW);
+    if (CF) [...$("flowDesign").options].forEach((o) => (o.textContent = nm(o.value)));
+    buildTable(); selectRun(); lastShown = -1;
+  }
+  $("langTh").addEventListener("click", () => applyLang("th"));
+  $("langEn").addEventListener("click", () => applyLang("en"));
+
+  // ------------------------------------------------------------- wiring ---
+  $("scenario").addEventListener("change", selectRun);
+  $("controller").addEventListener("change", selectRun);
+  $("play").addEventListener("click", () => { if (cur >= F - 1) cur = 0; playing = !playing; $("play").textContent = t(playing ? "pause" : "play"); });
+  $("candle").addEventListener("change", (e) => { candle = e.target.checked; lastShown = -1; });
+  $("resetView").addEventListener("click", () => { camera.position.copy(HOME); controls.target.set(0, 1.0, 0); });
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+    sizeChart(); drawChartBase();
+  }
+  new ResizeObserver(resize).observe(stage);
+  new ResizeObserver(() => { sizeChart(); drawChartBase(); }).observe(chart);
+  function applyTheme() { scene.background = new THREE.Color(css("--stage")); drawChartBase(); }
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function tick(now) {
+    const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+    if (playing) { cur += dt * parseFloat($("speed").value); if (cur >= F - 1) { cur = F - 1; playing = false; $("play").textContent = t("play"); } }
+    applyFrame(cur, dt);
+    fan.rotation.x += dt * (fan.userData.speed || 0) * (reduce ? 0.2 : 1);
+    if (flow.on) {
+      const fi = Math.min(F - 1, Math.round(cur)), on = !!run.power[fi];
+      flow.w = 1 / (1 + Math.exp(-(run.dmean[fi] - 0.6) / 0.08));       // embryo heat fraction (as in the model)
+      flow.show(on);
+      if (on) flow.step(reduce ? 0 : dt);
+    } else flow.show(false);
+    lid.rotation.x += (lid.userData.target - lid.rotation.x) * Math.min(1, dt * 4);
+    if (mmat.opacity > 0) {
+      for (let i = 0; i < MIST; i++) { mpos[i * 3 + 1] += mspd[i] * dt; if (mpos[i * 3 + 1] > 0.8) mpos[i * 3 + 1] = 0.1; }
+      mgeo.attributes.position.needsUpdate = true;
+    }
+    controls.update(); renderer.render(scene, camera);
+    requestAnimationFrame(tick);
+  }
+
+  applyLang(lang);
+  cur = Math.round((6.2 * 86400) / FS); // open on a representative mid-incubation moment
+  applyTheme(); resize();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
